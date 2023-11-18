@@ -26,7 +26,7 @@ function getAllStudents() {
     });
   }
 
-function getTAs() {
+/*function getTAs() {
     return new Promise((resolve, reject) => {
       const tas = dataCollection.students.filter((student) => student.TA === true);
       if (tas.length === 0) {
@@ -35,7 +35,7 @@ function getTAs() {
         resolve(tas);
       }
     });
-  }
+  }*/
 
   
 function getCourses() {
@@ -69,6 +69,20 @@ function getStudentByNum(num) {
     }
   });
 }
+function getCourseById(id) {
+  return new Promise((resolve, reject) => {
+      if (!dataCollection?.courses?.length) {
+          reject(noResultReturnMessage);
+      } else {
+          const matchedCourse = dataCollection.courses.find(course => course.courseId === parseInt(id));
+          if (!matchedCourse) {
+              reject("query returned 0 results");
+          } else {
+              resolve(matchedCourse);
+          }
+      }
+  });
+}
 
 function addStudent(studentData){
   return new Promise((resolve,reject) => {
@@ -86,13 +100,44 @@ function addStudent(studentData){
       }
   })
 }
+
+function updateStudent(studentData) {
+  return new Promise((resolve, reject) => {
+      let index = dataCollection.students.findIndex(student => student.studentNum === parseInt(studentData.studentNum));
+
+      if (index === -1) {
+          reject("Student not found");
+      } else {
+          if (studentData.TA === 'on') {
+              studentData.TA = true;
+          } else {
+              studentData.TA = false;
+          }
+          dataCollection.students[index].studentNum = parseInt(studentData.studentNum);
+          dataCollection.students[index].firstName = studentData.firstName;
+          dataCollection.students[index].lastName = studentData.lastName;
+          dataCollection.students[index].email = studentData.email;
+          dataCollection.students[index].addressStreet = studentData.addressStreet;
+          dataCollection.students[index].addressCity = studentData.addressCity;
+          dataCollection.students[index].addressProvince = studentData.addressProvince;
+          dataCollection.students[index].TA = studentData.TA;
+          dataCollection.students[index].status = studentData.status;
+          dataCollection.students[index].course = parseInt(studentData.course);
+
+          resolve();
+      }
+  });
+}
+
   module.exports = {
     initialize,
     getAllStudents,
-    getTAs,
+    //getTAs,
+    getCourseById,
     getCourses,
     getStudentsByCourse,
     getStudentByNum,
-    addStudent
+    addStudent,
+    updateStudent
   };
   

@@ -1,148 +1,185 @@
-/********************************************************************************* 
- WEB700 – Assignment 03** I declare that this assignment is my own work in accordance with Seneca's
- * Academic Integrity Policy:*
- * https://www.senecacollege.ca/about/policies/academic-integrity-policy.html*
- * * Name: Heer Patel Student ID: 103843223 Date: 14/10/2023
- * *********************************************************************************/
-const HTTP_PORT = process.env.PORT || 8080;
-const express = require("express");
-const app = express();
-const path = require("path");
-const collegeData = require("./modules/collegeData.js");
+/********************************************************************************
+* WEB700 – Assignment 05
+*
+* I declare that this assignment is my own work in accordance with Seneca's
+* Academic Integrity Policy:
+*
+* https://www.senecacollege.ca/about/policies/academic-integrity-policy.html
+*
+* Name: Heer Patel     Student ID:103843223  Date: 11-17-2023 
+*
+* Published URL: 
+* 
+*
+********************************************************************************/
 
+var express = require("express");
+var path = require("path");
+var collegeData = require("./modules/collegeData");
+const exphbs = require('express-handlebars');
+var HTTP_PORT = process.env.PORT || 8080;
+const promiseRejectionMessage = "No results returned";
+const noResultMessage = "no results";
+const internalErrorMessage = "Internal server error";
+var app = express();
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
+app.use(function(req, res, next) {
+    let route = req.path.substring(1);
+    app.locals.activeRoute = "/" + (isNaN(route.split('/')[1]) ? route.replace(/\/(?!.*)/, "") : route.replace(/\/(.*)/, ""));
+    next();
+});
+
+app.set('view engine', '.hbs');
+const hbs = exphbs.create({
+    extname: '.hbs',
+    defaultLayout: 'main',
+    helpers: {
+        navLink: function(url, options) {
+            return `<li class="nav-item">
+                <a class="nav-link ${url == app.locals.activeRoute ? "active" : ""}" href="${url}">${options.fn(this)}</a>
+            </li>`;
+        },
+        equal: function(lvalue, rvalue, options) {
+            if (arguments.length < 3)
+                throw new Error("Handlebars Helper 'equal' needs 2 parameters");
+            return lvalue != rvalue ? options.inverse(this) : options.fn(this);
+        },
+        compare: function(v1, v2) {
+            return v1 == v2;
+        }
+    }
+});
+
+app.engine('.hbs', hbs.engine);
+app.set('view engine', '.hbs');
 
 collegeData.initialize()
 .then(()=>{
+    app.get("/students", async (req, res) => {
+        try {
+            let students;
+            if (req.query.course) {
+                var course = parseInt(req.query.course);
+                students = await collegeData.getStudentsByCourse(course);
+            } else {
+                students = await collegeData.getAllStudents();
+            }
 
-app.get("/students", (req, res) => {
-  collegeData.getAllStudents()
-  .then((students) => {
-  if (students.length > 0) {
-    res.json(students);
-    } else {
-          res.status(404).json({ message: "no results" });
+            if (students && students.length > 0) {
+                res.render("students", { students: students });                
+            } else {
+                res.render("students", { message: noResultMessage });
+            }
+        } catch (err) {
+            if (err === promiseRejectionMessage) {
+                res.render("students", { message: noResultMessage });
+            } else {
+                console.error(err);
+                res.status(500).render("students", { message: internalErrorMessage });
+            }
         }
-  })
-  .catch((err) => {
-    console.error(err);
-    res.status(500).json({ message: "internal server error" });
-  });
-});
-
-  // Route to get students by course
-  app.get("/students", (req, res) => {
-    const course = req.query.course;
-    if (!course) {
-      res.status(400).json({ message: "course parameter is required" });
-      return;
-    }
-
-collegeData.getStudentsByCourse(parseInt(course))
-        .then((students) => {
-          if (students.length > 0) {
-            res.json(students);
-          } else {
-            res.status(404).json({ message: "no results" });
-          }
-        })
-        .catch((err) => {
-          console.error(err);
-          res.status(500).json({ message: "internal server error" });
-        });
     });
 
-    // Route to get all TAs
-    app.get("/tas", (req, res) => {
-      collegeData.getTAs()
-        .then((tas) => {
-          if (tas.length > 0) {
-            res.json(tas);
-          } else {
-            res.status(404).json({ message: "no results" });
-          }
-        })
-        .catch((err) => {
-          console.error(err);
-          res.status(500).json({ message: "internal server error" });
-        });
+    app.get("/courses", async (req, res) => {
+        try {
+            const courses = await collegeData.getCourses();
+            if (courses && courses.length > 0) {
+                res.render("courses", { courses: courses });
+
+                
+            } else {
+                res.render("courses", { message: "no results" });
+            }
+        } catch (err) {
+            console.error(err);
+            res.render("courses", { message: "no results" });
+        }
+    });
+    
+    app.get("/course/:id", async (req, res) => {
+        try {
+            const course = await collegeData.getCourseById(req.params.id);
+            if (course) {
+                res.render("course", { course: course });
+            } else {
+                res.render("course", { message: "Course not found" });
+            }
+        } catch (err) {
+            console.error(err);
+            res.render("course", { message: "An error occurred" });
+        }
     });
 
-    // Route to get all courses
-    app.get("/courses", (req, res) => {
-      collegeData.getCourses()
-        .then((courses) => {
-          if (courses.length > 0) {
-            res.json(courses);
-          } else {
-            res.status(404).json({ message: "no results" });
-          }
-        })
-        .catch((err) => {
-          console.error(err);
-          res.status(500).json({ message: "internal server error" });
-        });
-    });
 
-    // Route to get a student by student number
-    app.get("/student/:num", (req, res) => {
-      const num = parseInt(req.params.num);
+    
+    app.get("/student/:num", async (req, res) => {
+        try {
+        const num = parseInt(req.params.num); 
+        const matchedStudent = await collegeData.getStudentByNum(num);
+            if (matchedStudent) {
+                console.log("Student found:", matchedStudent);
+                res.render("student", { student: matchedStudent });
+            } else {
+                res.render("student", { message: "student not found" });
+            }
+        } catch (err) {
+            console.error(err);
+            res.render("student", { message: "An error occurred" });
+        }
 
-      collegeData.getStudentByNum(num)
-        .then((student) => {
-          if (student) {
-            res.json(student);
-          } else {
-            res.status(404).json({ message: "no results" });
-          }
-        })
-        .catch((err) => {
-          console.error(err);
-          res.status(500).json({ message: "internal server error" });
-        });
     });
+    
 
     app.post('/students/add', async (req, res) => {
-      try {
-       const createdStudent = await collegeData.addStudent(req.body);
-        res.redirect('/students');
-      } catch (error) {
-        res.status(500).json({message:"Error adding student"});
-      }
+        try {
+         const createdStudent = await collegeData.addStudent(req.body);      
+          res.redirect('/students');
+        } catch (error) {
+          res.status(500).json({message:"Error adding student"});
+        }
+      });
+      
+   
+    app.post("/student/update", (req, res) => {
+        collegeData.updateStudent(req.body)
+            .then(() => {
+                console.log("Student updated:", req.body);
+                res.redirect("/students");
+            })
+            .catch(err => {
+                console.error(err);
+                res.status(500).send("Unable to update student");
+            });
     });
 
-    // Serve static HTML files
-    app.get("/", (req, res) => {
-      res.sendFile(path.join(__dirname, "views", "home.html"));
+    app.get("/",(req,res)=>{
+        res.render('home');
+    });
+    
+    app.get("/about",(req,res)=>{
+        res.render('about'); 
     });
 
-    app.get("/about", (req, res) => {
-      res.sendFile(path.join(__dirname, "views", "about.html"));
+    app.get("/htmlDemo",(req,res)=>{
+        res.render('htmlDemo'); 
     });
 
-    app.get("/htmlDemo", (req, res) => {
-      res.sendFile(path.join(__dirname, "views", "htmlDemo.html"));
-    });
-
-    app.get("/students/add",(req,res)=>{
-      res.sendFile(path.join(__dirname,"views","addStudent.html"));
-  });
-
-    // 404 route
-    app.use((req, res) => {
-      res.status(404).send("Page Not Found");
-    });
-
-    // Start the server
-    app.listen(HTTP_PORT, () => {
-      console.log("Server listening on port: " + HTTP_PORT);
+     app.get("/students/add",(req,res)=>{
+        res.render('addStudent'); 
     });
 
     
-  })
-  .catch((err) => {
-    console.error(err);
-    console.error("Failed to initialize collegeData module. Server not started.");
-  });
+    app.use((req,res)=>{
+      res.status(404).sendFile(path.join(__dirname,"views","pageNotFound.html"));
+        
+    });
 
+    app.listen(HTTP_PORT, () => {
+        console.log("Server listening on port: " + HTTP_PORT);
+    });
+
+})
+.catch(err => {
+    console.error("Initalizastion error",err);
+});
