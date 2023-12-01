@@ -6,9 +6,9 @@
 *
 * https://www.senecacollege.ca/about/policies/academic-integrity-policy.html
 *
-* Name: Heer Patel     Student ID:103843223  Date: 11-17-2023 
+* Name: Heer Patel     Student ID:103843223  Date: 12-01-2023 
 *
-* Published URL: 
+* Published URL: https://worried-plum-trout.cyclic.app
 * 
 *
 ********************************************************************************/
@@ -17,18 +17,24 @@ var express = require("express");
 var path = require("path");
 var collegeData = require("./modules/collegeData");
 const exphbs = require('express-handlebars');
+
 var HTTP_PORT = process.env.PORT || 8080;
+
 const promiseRejectionMessage = "No results returned";
 const noResultMessage = "no results";
 const internalErrorMessage = "Internal server error";
+
 var app = express();
+
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
+
 app.use(function(req, res, next) {
     let route = req.path.substring(1);
     app.locals.activeRoute = "/" + (isNaN(route.split('/')[1]) ? route.replace(/\/(?!.*)/, "") : route.replace(/\/(.*)/, ""));
     next();
 });
+
 
 app.set('view engine', '.hbs');
 const hbs = exphbs.create({
@@ -44,9 +50,6 @@ const hbs = exphbs.create({
             if (arguments.length < 3)
                 throw new Error("Handlebars Helper 'equal' needs 2 parameters");
             return lvalue != rvalue ? options.inverse(this) : options.fn(this);
-        },
-        compare: function(v1, v2) {
-            return v1 == v2;
         }
     }
 });
@@ -54,8 +57,10 @@ const hbs = exphbs.create({
 app.engine('.hbs', hbs.engine);
 app.set('view engine', '.hbs');
 
+
 collegeData.initialize()
 .then(()=>{
+
     app.get("/students", async (req, res) => {
         try {
             let students;
@@ -67,7 +72,8 @@ collegeData.initialize()
             }
 
             if (students && students.length > 0) {
-                res.render("students", { students: students });                
+                res.render("students", { students: students });
+                                
             } else {
                 res.render("students", { message: noResultMessage });
             }
@@ -86,8 +92,6 @@ collegeData.initialize()
             const courses = await collegeData.getCourses();
             if (courses && courses.length > 0) {
                 res.render("courses", { courses: courses });
-
-                
             } else {
                 res.render("courses", { message: "no results" });
             }
@@ -97,13 +101,14 @@ collegeData.initialize()
         }
     });
     
+
     app.get("/course/:id", async (req, res) => {
         try {
             const course = await collegeData.getCourseById(req.params.id);
             if (course) {
                 res.render("course", { course: course });
             } else {
-                res.render("course", { message: "Course not found" });
+                res.status(404).render("course", { message: "Course not found" });
             }
         } catch (err) {
             console.error(err);
@@ -111,36 +116,51 @@ collegeData.initialize()
         }
     });
 
-
-    
     app.get("/student/:num", async (req, res) => {
         try {
-        const num = parseInt(req.params.num); 
-        const matchedStudent = await collegeData.getStudentByNum(num);
+            const num = parseInt(req.params.num);
+
+            let viewData = {};
+
+            const matchedStudent = await collegeData.getStudentByNum(num);
             if (matchedStudent) {
-                console.log("Student found:", matchedStudent);
-                res.render("student", { student: matchedStudent });
+                viewData.student = matchedStudent;
             } else {
-                res.render("student", { message: "student not found" });
+                viewData.student = null;
             }
+
+            const courses = await collegeData.getCourses();
+            viewData.courses = courses; 
+
+            if (viewData.student && viewData.student.course && viewData.courses) {
+                for (let i = 0; i < viewData.courses.length; i++) {
+                    if (viewData.courses[i].courseId == viewData.student.course) {
+                        viewData.courses[i].selected = true;
+                    }
+                }
+            }
+
+            if (viewData.student == null) {
+                res.status(404).render("student", { message: "Student Not Found" });
+            } else {
+                res.render("student", { viewData: viewData });
+            }
+
         } catch (err) {
             console.error(err);
             res.render("student", { message: "An error occurred" });
         }
-
     });
-    
 
     app.post('/students/add', async (req, res) => {
         try {
-         const createdStudent = await collegeData.addStudent(req.body);      
+         const createdStudent = await collegeData.addStudent(req.body);
           res.redirect('/students');
         } catch (error) {
           res.status(500).json({message:"Error adding student"});
         }
       });
       
-   
     app.post("/student/update", (req, res) => {
         collegeData.updateStudent(req.body)
             .then(() => {
@@ -153,8 +173,65 @@ collegeData.initialize()
             });
     });
 
+        app.post('/courses/add', async (req, res) => {
+            try {
+                await collegeData.addCourse(req.body);
+    
+                res.redirect('/courses');
+            } catch (error) {
+                console.error("Error adding course:", error);
+                res.status(500).json({ message: "Error adding course" });
+            }
+        });
+    
+        app.post('/course/update', async (req, res) => {
+            try {
+                await collegeData.updateCourse(req.body);
+                res.redirect('/courses');
+            } catch (error) {
+                console.error("Error updating course:", error);
+                res.status(500).json({ message: "Error updating course" });
+            }
+        });
+
+        app.get("/course/delete/:id", async (req, res) => {
+            try {
+                await collegeData.deleteCourseById(parseInt(req.params.id));
+                res.redirect("/courses");
+            } catch (error) {
+                console.error("Error deleting course:", error);
+                res.status(500).send("Unable to Remove Course / Course not found");
+            }
+        });
+
+        app.get("/students/add", (req, res) => {
+            collegeData.getCourses()
+                .then(courses => {
+                    if (courses && courses.length > 0) {
+                        res.render("addStudent", { courses: courses });
+                    } else {
+                        res.render("addStudent", { courses: [], message: "No courses found" });
+                    }
+                })
+                .catch(err => {
+                    console.error("Error fetching courses:", err);
+                    res.render("addStudent", { courses: [], message: "Error fetching course data" });
+                });
+        });
+
+        app.get("/student/delete/:studentNum", (req, res) => {
+            collegeData.deleteStudentByNum(parseInt(req.params.studentNum))
+                .then(() => {
+                    res.redirect("/students");
+                })
+                .catch(err => {
+                    console.error("Error deleting student:", err);
+                    res.status(500).send("Unable to Remove Student / Student not found");
+                });
+        });
+
     app.get("/",(req,res)=>{
-        res.render('home');
+        res.render('home'); 
     });
     
     app.get("/about",(req,res)=>{
@@ -165,11 +242,10 @@ collegeData.initialize()
         res.render('htmlDemo'); 
     });
 
-     app.get("/students/add",(req,res)=>{
-        res.render('addStudent'); 
+    app.get("/courses/add",(req,res)=>{
+        res.render('addCourse'); 
     });
 
-    
     app.use((req,res)=>{
       res.status(404).sendFile(path.join(__dirname,"views","pageNotFound.html"));
         
